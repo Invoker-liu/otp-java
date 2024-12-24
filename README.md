@@ -5,15 +5,15 @@
 ![](https://img.shields.io/github/license/BastiaanJansen/OTP-Java)
 ![](https://img.shields.io/github/issues/BastiaanJansen/OTP-Java)
 
-A small and easy-to-use one-time password generator for Java according to [RFC 4226](https://tools.ietf.org/html/rfc4226) (HOTP) and [RFC 6238](https://tools.ietf.org/html/rfc6238) (TOTP).
+A small and easy-to-use one-time password generator for Java implementing [RFC 4226](https://tools.ietf.org/html/rfc4226) (HOTP) and [RFC 6238](https://tools.ietf.org/html/rfc6238) (TOTP).
 
 ## Table of Contents
 
 * [Features](#features)
 * [Installation](#installation)
 * [Usage](#usage)
-    * [HOTP (Counter-based one-time passwords)](#hotp-counter-based-one-time-passwords)
-    * [TOTP (Time-based one-time passwords)](#totp-time-based-one-time-passwords)
+    * [HOTP (Counter-based one-time passwords)](#counter-based-one-time-passwords)
+    * [TOTP (Time-based one-time passwords)](#time-based-one-time-passwords)
     * [Recovery codes](#recovery-codes)
 
 ## Features
@@ -30,23 +30,23 @@ The following features are supported:
 <dependency>
     <groupId>com.github.bastiaanjansen</groupId>
     <artifactId>otp-java</artifactId>
-    <version>1.3.2</version>
+    <version>2.1.0</version>
 </dependency>
 ```
 
 ### Gradle
 ```gradle
-implementation 'com.github.bastiaanjansen:otp-java:1.3.2'
+implementation 'com.github.bastiaanjansen:otp-java:2.1.0'
 ```
 
 ### Scala SBT
 ```scala
-libraryDependencies += "com.github.bastiaanjansen" % "otp-java" % "1.3.2"
+libraryDependencies += "com.github.bastiaanjansen" % "otp-java" % "2.1.0"
 ```
 
 ### Apache Ivy
 ```xml
-<dependency org="com.github.bastiaanjansen" name="otp-java" rev="1.3.2" />
+<dependency org="com.github.bastiaanjansen" name="otp-java" rev="2.1.0" />
 ```
 
 Or you can download the source from the [GitHub releases page](https://github.com/BastiaanJansen/OTP-Java/releases).
@@ -54,42 +54,46 @@ Or you can download the source from the [GitHub releases page](https://github.co
 ## Usage
 ### HOTP (Counter-based one-time passwords)
 #### Initialization HOTP instance
-To create a `HOTP` instance, use the `HOTP.Builder` class as follows:
+To create a `HOTPGenerator` instance, use the `HOTPGenerator.Builder` class as follows:
 
 ```java
-byte[] secret = "VV3KOX7UQJ4KYAKOHMZPPH3US4CJIMH6F3ZKNB5C2OOBQ6V2KIYHM27Q".getBytes();
-HOTP.Builder builder = new HOTP.Builder(secret);
-HOTP hotp = builder.build();
+String secret = "VV3KOX7UQJ4KYAKOHMZPPH3US4CJIMH6F3ZKNB5C2OOBQ6V2KIYHM27Q";
+HOTPGenerator hotp = new HOTPGenerator.Builder(secret).build();
 ```
 The above builder creates a HOTP instance with default values for passwordLength = 6 and algorithm = SHA1. Use the builder to change these defaults:
 ```java
-HOTP.Builder builder = new HOTP.Builder(secret);
-builder
-  .withPasswordLength(8)
-  .withAlgorithm(HMACAlgorithm.SHA256);
+HOTPGenerator hotp = new HOTPGenerator.Builder(secret)
+        .withPasswordLength(8)
+        .withAlgorithm(HMACAlgorithm.SHA256)
+        .build();
+```
 
-HOTP hotp = builder.build();
+If you have a shared secret described in [RFC-4226](https://www.rfc-editor.org/rfc/rfc4226), you need to encode it first:
+
+```java
+byte[] sharedSecret = getMySharedSecret();
+
+byte[] secret = Base32.encode(sharedSecret);
 ```
 
 When you don't already have a secret, you can let the library generate it:
 ```java
-// To generate a secret with 160 bits
+// To generate a Base32-encoded secret with 160 bits
 byte[] secret = SecretGenerator.generate();
 
-// To generate a secret with a custom amount of bits
+// To generate a Base32-encoded secret with a custom amount of bits
 byte[] secret = SecretGenerator.generate(512);
 ```
 
 It is also possible to create a HOTP instance based on an OTPAuth URI. When algorithm or digits are not specified, the default values will be used.
 ```java
 URI uri = new URI("otpauth://hotp/issuer?secret=ABCDEFGHIJKLMNOP&algorithm=SHA1&digits=6&counter=8237");
-HOTP hotp = HOTP.fromURI(uri);
+HOTPGenerator hotp = HOTPGenerator.fromURI(uri);
 ```
 
 Get information about the generator:
 
 ```java
-byte[] secret = hotp.getSecret();
 int passwordLength = hotp.getPasswordLength(); // 6
 HMACAlgorithm algorithm = hotp.getAlgorithm(); // HMACAlgorithm.SHA1
 ```
@@ -119,37 +123,35 @@ TOTP can accept more paramaters: `passwordLength`, `period`, `algorithm` and `se
 // Generate a secret (or use your own secret)
 byte[] secret = SecretGenerator.generate();
 
-TOTP.Builder builder = new TOTP.Builder(secret);
-
-builder
-    .withPasswordLength(6)
-    .withAlgorithm(HMACAlgorithm.SHA1) // SHA256 and SHA512 are also supported
-    .withPeriod(Duration.ofSeconds(30));
-
-TOTP totp = builder.build();
+TOTPGenerator totp = new TOTPGenerator.Builder(secret)
+        .withHOTPGenerator(builder -> {
+            builder.withPasswordLength(6);
+            builder.withAlgorithm(HMACAlgorithm.SHA1); // SHA256 and SHA512 are also supported
+        })
+        .withPeriod(Duration.ofSeconds(30))
+        .build();
 ```
 Or create a `TOTP` instance from an OTPAuth URI:
 ```java
 URI uri = new URI("otpauth://totp/issuer?secret=ABCDEFGHIJKLMNOP&algorithm=SHA1&digits=6&period=30");
-TOTP totp = TOTP.fromURI(uri);
+TOTPGenerator totpGenerator = TOTPGenerator.fromURI(uri);
 ```
 
 Get information about the generator:
 ```java
-byte[] secret = totp.getSecret();
-int passwordLength = totp.getPasswordLength(); // 6
-HMACAlgorithm algorithm = totp.getAlgorithm(); // HMACAlgorithm.SHA1
-Duration period = totp.getPeriod(); // Duration.ofSeconds(30)
+int passwordLength = totpGenerator.getPasswordLength(); // 6
+HMACAlgorithm algorithm = totpGenerator.getAlgorithm(); // HMACAlgorithm.SHA1
+Duration period = totpGenerator.getPeriod(); // Duration.ofSeconds(30)
 ```
 
 #### Generation of TOTP code
 After creating an instance of the TOTP class, a code can be generated by using the `now()` method, similarly with the HOTP class:
 ```java
 try {
-    String code = totp.now();
+    String code = totpGenerator.now();
      
     // To verify a token:
-    boolean isValid = totp.verify(code);
+    boolean isValid = totpGenerator.verify(code);
 } catch (IllegalStateException e) {
     // Handle error
 }
@@ -159,16 +161,19 @@ The above code will generate a time-based one-time password based on the current
 ```java
 try {
     // Based on current time
-    totp.now();
+    totpGenerator.now();
     
     // Based on specific date
-    totp.at(new Date());
+    totpGenerator.at(new Date());
+    
+    // Based on specific local date
+    totpGenerator.at(LocalDate.of(2023, 3, 2));
     
     // Based on seconds past 1970
-    totp.at(9238346823);
+    totpGenerator.at(9238346823);
     
     // Based on an instant
-    totp.at(Instant.now());
+    totpGenerator.at(Instant.now());
 } catch (IllegalStateException e) {
     // Handle error
 }
@@ -177,9 +182,9 @@ try {
 ### Generation of OTPAuth URI's
 To easily generate a OTPAuth URI for easy on-boarding, use the `getURI()` method for both `HOTP` and `TOTP`. Example for `TOTP`:
 ```java
-TOTP totp = new TOTP.Builder(secret).build();
+TOTPGenerator totpGenerator = new TOTPGenerator.Builder(secret).build();
 
-URI uri = totp.getURI("issuer", "account"); // otpauth://totp/issuer:account?period=30&digits=6&secret=SECRET&algorithm=SHA1
+URI uri = totpGenerator.getURI("issuer", "account"); // otpauth://totp/issuer:account?period=30&digits=6&secret=SECRET&algorithm=SHA1
 
 ```
 
